@@ -106,8 +106,8 @@ const TestWheelView = ({ onBack }: { onBack: () => void }) => {
               </span>
             );
           })}
-          <span className="test-wheel-hub">GO</span>
         </div>
+        <span className="test-wheel-hub">GO</span>
       </div>
 
       <div className="test-wheel-result" aria-live="polite">
