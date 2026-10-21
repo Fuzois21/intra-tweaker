@@ -1,0 +1,30 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><title>Points gagnés pendant la partie</title><style>body{background:#101b15;color:#eee;font:14px system-ui;margin:12px}h1{font-size:20px}iframe{width:100%;height:740px;border:1px solid #567}li{padding:4px}.ok{color:#c9e695}.fail{color:#ff9690}</style><h1>Score lié aux impacts · contrôle réel</h1><p id="state">Démarrage</p><ol id="results"></ol><iframe title="Partie en cours"></iframe><script type="module">
+const cases=[['pinball',42],['pachinko',92],['plinko',100],['pinball',0],['pinball',1],['pachinko',1],['plinko',0]];
+const frame=document.querySelector('iframe');let failures=0;
+for(const [game,score] of cases){
+ document.querySelector('#state').textContent=game+' · cible '+score+'%';
+ let seen=false,result=false,values=[0],error='',lastBeforeResult=0,closed=false;
+ frame.src='/?game='+game+'&score='+score;
+ const started=performance.now();
+ await new Promise(resolve=>{
+  const timer=setInterval(()=>{
+   const root=frame.contentDocument?.querySelector('#intra-tweaker-winwheel-demo-root')?.shadowRoot;
+   if(root){seen=true;const stage=root.querySelector('.game-stage');const live=root.querySelector('[data-live-score]');
+    const total=Number(live?.textContent?.replace('%','')??0);
+    if(total!==values.at(-1))values.push(total);
+    if(stage?.dataset.phase==='result'){
+      result=true;if(total!==lastBeforeResult)error='Score changé à la fin';
+      if(total!==score)error='Total incorrect';
+    }else lastBeforeResult=total;
+    if(root.querySelector('.game-status')?.textContent?.includes('interrompue')){error='Animation interrompue';clearInterval(timer);resolve();}
+   }else if(seen){closed=true;clearInterval(timer);resolve();}
+   if(performance.now()-started>18000){error='Délai dépassé';clearInterval(timer);resolve();}
+  },16);
+ });
+ if(!closed||!result||values.at(-1)!==score)error||='Résultat manquant';
+ if(score>1&&values.length<3)error||='Pas de progression pendant le jeu';
+ if(values.some((n,i)=>n<0||n>score||(i>0&&n<values[i-1])))error||='Compteur incohérent';
+ const li=document.createElement('li');li.className=error?'fail':'ok';li.textContent=game+' · '+score+'% : '+values.join(' / ')+' · '+(error||'OK, aucun ajout à la fin');document.querySelector('#results').append(li);if(error)failures++;
+}
+document.querySelector('#state').textContent=failures?failures+' échec(s)':'7/7 parties : score gagné aux impacts, total inchangé à la fin';document.body.dataset.audit=failures?'failed':'passed';
+</script></html>

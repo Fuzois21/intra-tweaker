@@ -75,7 +75,8 @@ export const tagFromElement = (element: HTMLAnchorElement): Tag | undefined => {
       element,
     };
   } else {
-    const percentage = parseInt(traceSymbol.getAttribute("successpercent") ?? "0");
+    const rawPercentage = traceSymbol.getAttribute("successpercent");
+    const percentage = rawPercentage?.trim() ? Number(rawPercentage) : undefined;
 
     return {
       name,
@@ -144,15 +145,8 @@ export const elementFromTag = (tag: Tag) => {
 };
 
 export const getAllTags = (doc = document) => {
-  const tagsTitle = Array.from(doc.getElementsByClassName("title")).find((t) =>
-    t.textContent?.includes("Tags")
-  );
-  if (!tagsTitle) return null;
-
-  const listElement = tagsTitle.nextElementSibling;
-  if (!listElement?.classList.contains("list")) return [];
-
-  const tags = Array.from(listElement.getElementsByTagName("a"));
+  const tags = Array.from(doc.querySelectorAll<HTMLAnchorElement>("a.list__item"))
+    .filter(element => element.querySelector("trace-symbol") && element.querySelector(".list__item__name"));
 
   const list: Tag[] = [];
 

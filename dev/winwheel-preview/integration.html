@@ -1,0 +1,30 @@
+<!doctype html><html lang="fr"><meta charset="utf-8"><title>Contrôle intégration Winwheel</title><style>body{background:#101b15;color:#eee;font:14px system-ui}iframe{border:1px solid #567;height:720px;max-width:100%;background:white}li{padding:4px}.ok{color:#b9e593}.fail{color:#ff9690}</style><h1>Intégration · résultat puis fermeture automatique</h1><p id="state">Démarrage</p><ol id="results"></ol><iframe title="Jeu en cours"></iframe><script type="module">
+const games=['marbles','pachinko','derby','crash','pinball','lotto','cups'];
+const frame=document.querySelector('iframe'), results=document.querySelector('#results');
+let failures=0;
+for(const [index,game] of games.entries()){
+ const score=[0,100,7,92,100,0,42][index];
+ frame.style.width=index%2?'1280px':'390px';
+ document.querySelector('#state').textContent=game+' · '+score+'%';
+ let resultAt=0,closedAt=0,error='',lastScore='',seen=false;
+ frame.src='/?game='+game+'&score='+score;
+ const start=performance.now();
+ await new Promise(resolve=>{
+  const poll=setInterval(()=>{
+   const root=frame.contentDocument?.querySelector('#intra-tweaker-winwheel-demo-root')?.shadowRoot;
+   if(root){
+    seen=true;const result=root.querySelector('[data-result]');
+    if(result){lastScore=result.textContent;if(!resultAt)resultAt=performance.now();}
+    const scene=root.querySelector('#game-stage')?.firstElementChild;
+    if(scene){const rect=scene.getBoundingClientRect();if(rect.left < -1 || rect.right>frame.clientWidth+1 || rect.bottom>frame.clientHeight+1)error='Scène hors écran';}
+    if(root.querySelector('.game-status')?.textContent?.includes('interrompue')){error='Animation interrompue';clearInterval(poll);resolve();}
+   }else if(seen){closedAt=performance.now();clearInterval(poll);resolve();}
+   if(performance.now()-start>16000){error='Délai dépassé';clearInterval(poll);resolve();}
+  },35);
+ });
+ const delay=Math.round(closedAt-resultAt);
+ if(!resultAt||lastScore!==score+'%'||delay<930||delay>1200)error ||= 'Résultat/fermeture incorrect : '+lastScore+' · '+delay+'ms';
+ const li=document.createElement('li');li.className=error?'fail':'ok';li.textContent=game+' · '+frame.style.width+' · '+(error||lastScore+' · fermeture '+delay+'ms · OK');results.append(li);if(error)failures++;
+}
+document.querySelector('#state').textContent=failures?failures+' échec(s)':'7/7 · scores et fermeture validés';document.body.dataset.audit=failures?'failed':'passed';
+</script></html>

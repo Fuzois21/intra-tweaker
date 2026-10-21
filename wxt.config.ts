@@ -26,6 +26,8 @@ export default defineConfig({
     permissions: [
       "notifications",
       "storage",
+      "activeTab",
+      "scripting",
       "declarativeNetRequestWithHostAccess",
       ...(browser === "firefox" ? [] : ["userScripts"]),
     ],

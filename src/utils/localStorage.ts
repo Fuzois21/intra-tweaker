@@ -9,7 +9,9 @@ export const setItem = (key: string, value: any): Promise<void> => {
 export const getItem = async (key: string): Promise<string | null> => {
   if (import.meta.env.BROWSER === "firefox")
     return Promise.resolve(localStorage.getItem(key));
-  else if (import.meta.env.BROWSER === "chrome")
-    return (await chrome.storage.sync.get(key))[key];
+  else if (import.meta.env.BROWSER === "chrome") {
+    const value = (await chrome.storage.sync.get(key))[key];
+    return typeof value === "string" ? value : null;
+  }
   else throw new Error("UNSUPPORTED BROWSER");
 };

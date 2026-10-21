@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d1511" />
+    <title>Winwheel · Page de test Forge</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <a class="brand" href="#top" aria-label="Forge, page de test">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" fill="none">
+              <path d="M7 5h18v6H13v4h10v6H13v6H7V5Z" fill="currentColor" />
+              <circle cx="24" cy="23" r="3" fill="#0d1511" />
+            </svg>
+          </span>
+          <span class="brand-name">FORGE <span>/ INTRA</span></span>
+        </a>
+        <div class="topbar-right">
+          <span class="environment"><span class="environment-dot"></span>SIMULATION LOCALE</span>
+          <button class="new-test" type="button" id="new-test">
+            <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16.2 8A6.4 6.4 0 1 0 16 12M16.2 8V3.8M16.2 8H12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            Nouveau score
+          </button>
+        </div>
+      </header>
+
+      <main class="page" id="top">
+        <nav class="breadcrumbs" aria-label="Fil d’Ariane">
+          <span>Intra</span><span class="breadcrumb-separator">/</span><span>Tags</span>
+        </nav>
+
+        <section class="page-intro" aria-labelledby="page-title">
+          <div>
+            <p class="eyebrow">APERÇU DU MODULE</p>
+            <h1 id="page-title">Révélation de score</h1>
+            <p class="page-copy">Tag Forge simulé. Clique sur le bouton du tag pour lancer une loterie et révéler son score aléatoire.</p>
+          </div>
+          <div class="module-status" id="module-status" role="status" aria-live="polite">
+            <span class="status-led"></span><span>Chargement du module…</span>
+          </div>
+        </section>
+
+        <section class="tags-card" aria-labelledby="tags-title">
+          <div class="card-heading title" id="tags-title">
+            <div class="title-wrap">
+              <span class="section-icon" aria-hidden="true">
+                <svg viewBox="0 0 20 20" fill="none"><path d="M3.5 5.5h13M3.5 10h13M3.5 14.5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
+              </span>
+              <div>
+                <h2 class="section-title">Tags</h2>
+                <p class="card-subtitle">Historique de l’étudiant</p>
+              </div>
+            </div>
+            <span class="tag-count">1 tag</span>
+          </div>
+
+          <div class="list">
+            <a class="list__item" href="#forge-test-tag" id="forge-test-tag">
+              <div class="list__item__left">
+                <div class="list__item__name">winwheel / preview</div>
+                <div class="list__item__subname">Submitted on September 29, 2026 - 14:32</div>
+              </div>
+              <div class="list__item__right">
+                <trace-symbol status="SUCCEEDED" successpercent="0" validated="false"></trace-symbol>
+                <span class="row-divider" aria-hidden="true"></span>
+                <svg class="row-arrow" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="m6 3 5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" /></svg>
+              </div>
+            </a>
+          </div>
+
+          <div class="card-footer">
+            <span class="success-dot" aria-hidden="true"></span>
+            <span>Tag réussi · pourcentage caché avant la loterie</span>
+          </div>
+        </section>
+
+        <p class="page-note">Données fictives, aucune connexion à Forge. Le score change avec <strong>Nouveau score</strong>.</p>
+      </main>
+    </div>
+
+    <noscript>Cette page de test a besoin de JavaScript.</noscript>
+    <script type="module" src="/main.ts"></script>
+  </body>
+</html>

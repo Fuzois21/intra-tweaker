@@ -1,47 +1,58 @@
-import { getAllTags } from "../background/common/tags";
+import { watchTagResults } from "./tagWatcher";
+import { frameLoop } from "./timing";
+import { impactAwards, scoreReadout, showImpact } from "./scoring";
+import { getAllTags, type Tag } from "../background/common/tags";
+import { WINWHEEL_GAMES, type WinwheelGameId } from "../../utils/winwheelGames";
 import { casinoStyles } from "./styles";
+import {
+  extraGameStyles,
+  physicalGameStyles,
+  getExtraGameMarkup,
+  runExtraGame,
+  type ExtraGameId,
+  type FxHelpers,
+} from "./extraGames";
 
-type GameId = "wheel" | "plinko" | "roulette" | "slots" | "dice" | "scratch";
+type GameId = WinwheelGameId;
 
 type GameDefinition = {
   id: GameId;
   name: string;
   description: string;
-  icon: string;
-  accent: string;
 };
 
-const iconMarkup: Record<GameId, string> = {
-  wheel: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18M5.64 5.64l12.72 12.72M18.36 5.64 5.64 18.36"/><circle cx="12" cy="12" r="2.4"/></svg>`,
-  plinko: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16M5 8h14M4 12h16M5 16h14M4 20h16"/><circle cx="8" cy="8" r="1.2" fill="currentColor"/><circle cx="15" cy="12" r="1.2" fill="currentColor"/><circle cx="10" cy="16" r="1.2" fill="currentColor"/></svg>`,
-  roulette: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 3v4.5M20 9l-4.2 1.4M17 19l-2.6-3.7M7 19l2.6-3.7M4 9l4.2 1.4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg>`,
-  slots: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M8 5v14M16 5v14M6 11h.01M12 13h.01M18 10h.01"/></svg>`,
-  dice: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="4"/><path d="M8 8h.01M16 8h.01M12 12h.01M8 16h.01M16 16h.01" stroke-width="2.8"/></svg>`,
-  scratch: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 15 7-7M8 9l2-2m4 10 3-3M7 18h10"/><circle cx="17" cy="7" r="1" fill="currentColor"/></svg>`,
+const gameDescriptions: Record<GameId, string> = {
+  wheel: "Spin the original wheel to reveal your tag score.",
+  plinko: "Les contacts avec les clous allumés construisent le score de la partie.",
+  roulette: "Watch the ball settle on your saved percentage.",
+  slots: "Line up the digits of your tag score.",
+  dice: "Roll first; your saved score unlocks after the toss.",
+  scratch: "Rub away the ticket to uncover your percentage.",
+  crash: "Watch the rocket multiply your score before it crashes.",
+  lotto: "Spin the drum and draw the golden jackpot score ball.",
+  derby: "5 thoroughbred horses race for the winning score.",
+  cups: "Track the golden ball through lightning-fast shuffles.",
+  marbles: "4 high-speed marbles battle down the winding track.",
+  pachinko: "Arcade fever spheres bounce through pins into the jackpot pocket.",
+  pinball: "Catapult the chrome ball into neon bumpers and the jackpot saucer.",
 };
 
-const games: GameDefinition[] = [
-  { id: "wheel", name: "Prize wheel", description: "Spin the original wheel to reveal your tag score.", icon: iconMarkup.wheel, accent: "#d8ff6a" },
-  { id: "plinko", name: "Plinko", description: "0% sits at the edges; 100% sits in the center.", icon: iconMarkup.plinko, accent: "#82dff0" },
-  { id: "roulette", name: "Roulette", description: "Watch the ball settle on your saved percentage.", icon: iconMarkup.roulette, accent: "#ff7771" },
-  { id: "slots", name: "Lucky slots", description: "Line up the digits of your tag score.", icon: iconMarkup.slots, accent: "#e7a2ed" },
-  { id: "dice", name: "Lucky dice", description: "Roll first; your saved score unlocks after the toss.", icon: iconMarkup.dice, accent: "#f2c66d" },
-  { id: "scratch", name: "Scratch card", description: "Rub away the ticket to uncover your percentage.", icon: iconMarkup.scratch, accent: "#7be4c2" },
-];
+const games: GameDefinition[] = WINWHEEL_GAMES.map(({ id, label }) => ({
+  id,
+  name: label,
+  description: gameDescriptions[id],
+}));
+const isGameId = (value: unknown): value is GameId => games.some((game) => game.id === value);
 
 const colors = ["#d8ff6a", "#ff7771", "#82dff0", "#f2c66d", "#7be4c2", "#bd9cf2", "#ef9dc8", "#f4eedf"];
 const rouletteColors = ["#14734f", "#151d19", "#a53e36", "#151d19", "#a53e36", "#151d19", "#a53e36", "#151d19", "#a53e36", "#151d19", "#a53e36", "#151d19"];
 const activeAnimations = new Set<Animation>();
 
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-const motionTime = (milliseconds: number) => {
-  const reduceMotion = typeof window !== "undefined"
+const prefersReducedMotion = () => typeof window !== "undefined"
     && typeof window.matchMedia === "function"
     && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  return reduceMotion ? Math.min(milliseconds, 420) : milliseconds;
-};
-
-const isGameId = (value: string | undefined): value is GameId => games.some((game) => game.id === value);
+const motionTime = (milliseconds: number) => prefersReducedMotion() ? Math.min(milliseconds, 420) : milliseconds;
 
 const shuffle = <T,>(items: T[]): T[] => {
   const shuffled = [...items];
@@ -70,6 +81,11 @@ const makeWheelMarkup = (game: "wheel" | "roulette", score: number) => {
   const step = 360 / count;
   const center = 220;
   const radius = isRoulette ? 184 : 190;
+  const landingFraction = isRoulette
+    ? 0.5
+    : Math.random() < 0.5
+      ? 0.055 + Math.random() * 0.1
+      : 0.845 + Math.random() * 0.1;
   const segments = outcomes.map((outcome, index) => {
     const start = -90 + index * step;
     const end = start + step;
@@ -80,39 +96,27 @@ const makeWheelMarkup = (game: "wheel" | "roulette", score: number) => {
     return `<path d="M ${center} ${center} L ${from.x.toFixed(2)} ${from.y.toFixed(2)} A ${radius} ${radius} 0 0 1 ${to.x.toFixed(2)} ${to.y.toFixed(2)} Z" fill="${fill}" stroke="#18241d" stroke-width="2"/><text class="${isRoulette ? "roulette-label" : "wheel-label"}" x="${middle.x.toFixed(2)}" y="${middle.y.toFixed(2)}" text-anchor="middle" dominant-baseline="middle">${outcome}%</text>`;
   }).join("");
   const pointer = isRoulette
-    ? `<g class="roulette-orbit"><circle class="roulette-ball" cx="220" cy="30" r="8"/></g>`
-    : `<path class="wheel-pointer" d="M 220 7 L 236 44 L 220 37 L 204 44 Z"/>`;
+    ? `<circle class="roulette-ball" cx="220" cy="22" r="7"/>`
+    : `<path class="wheel-pointer" d="M 220 48 L 202 12 L 238 12 Z"/>`;
   const centerMark = isRoulette
     ? `<circle class="roulette-center" cx="220" cy="220" r="39"/><text class="roulette-center-text" x="220" y="224" text-anchor="middle">INTRA</text>`
     : `<circle class="wheel-hub" cx="220" cy="220" r="34"/><text class="wheel-hub-text" x="220" y="224" text-anchor="middle">SPIN</text>`;
-  return `<svg class="stage-svg" viewBox="0 0 440 440" role="img" aria-label="${isRoulette ? "Roulette wheel" : "Prize wheel"} with percentage pockets"><circle cx="220" cy="220" r="209" fill="#0b130f" stroke="#53695c" stroke-width="2"/><circle cx="220" cy="220" r="198" fill="none" stroke="#b29658" stroke-width="2"/><g class="${isRoulette ? "roulette-rotor" : "wheel-rotor"}" data-target="${outcomes.indexOf(score)}" data-count="${count}">${segments}<circle cx="220" cy="220" r="39" fill="#101a14" stroke="#bd9a52" stroke-width="3"/></g>${centerMark}${pointer}</svg>`;
+  const rouletteTrack = isRoulette
+    ? `<circle class="roulette-track" cx="220" cy="220" r="199"/><circle class="roulette-track-inner" cx="220" cy="220" r="188"/>`
+    : "";
+  return `<svg class="stage-svg${isRoulette ? " roulette-scene" : ""}" viewBox="0 0 440 440" role="img" aria-label="${isRoulette ? "Roulette wheel" : "Prize wheel"} with percentage pockets"><defs><radialGradient id="roulette-ball-gradient" cx="32%" cy="25%"><stop offset="0" stop-color="#fffef3"/><stop offset=".48" stop-color="#f8edc9"/><stop offset="1" stop-color="#9a7840"/></radialGradient></defs><circle cx="220" cy="220" r="209" fill="#0b130f" stroke="#53695c" stroke-width="2"/><circle cx="220" cy="220" r="198" fill="none" stroke="#b29658" stroke-width="2"/>${rouletteTrack}<g class="${isRoulette ? "roulette-rotor" : "wheel-rotor"}" data-target="${outcomes.indexOf(score)}" data-count="${count}" data-landing="${landingFraction}">${segments}<circle cx="220" cy="220" r="39" fill="#101a14" stroke="#bd9a52" stroke-width="3"/></g>${centerMark}${isRoulette ? pointer.replace('<circle class="roulette-ball"', '<circle fill="url(#roulette-ball-gradient)" class="roulette-ball"') : pointer}</svg>`;
 };
 
 const makePlinkoMarkup = (score: number) => {
-  const center = 300;
   const left = 38;
   const slotWidth = 52.4;
-  const edgeDistance = (100 - score) / 100;
-  const side = score === 100 || Math.random() > 0.5 ? -1 : 1;
-  const targetIndex = clamp(Math.round(5 + side * edgeDistance * 5), 0, 10);
-  const targetX = left + slotWidth * (targetIndex + 0.5);
-  const points = [{ x: center, y: 20 }];
-
-  for (let row = 1; row <= 10; row++) {
-    const progress = row / 10;
-    const idealX = center + (targetX - center) * progress;
-    const jitter = row === 10 ? 0 : (Math.random() - 0.5) * 38;
-    points.push({
-      x: row === 10 ? targetX : clamp(idealX + jitter, 39, 561),
-      y: 20 + row * 26,
-    });
-  }
+  const targetIndex = Math.floor(Math.random() * 11);
 
   const pegs = Array.from({ length: 10 }, (_, row) => {
     const y = 35 + row * 25;
     return Array.from({ length: 11 }, (_, column) => {
       const x = 38 + column * 52.4 + (row % 2 ? 26.2 : 0);
-      if (x > 568) return "";
+      if (x > 600) return "";
       return `<circle class="plinko-peg" cx="${x.toFixed(1)}" cy="${y}" r="3.3"/>`;
     }).join("");
   }).join("");
@@ -122,28 +126,38 @@ const makePlinkoMarkup = (score: number) => {
   }).join("");
   const labels = Array.from({ length: 11 }, (_, index) => {
     const x = left + slotWidth * (index + 0.5);
-    const value = index <= 5 ? index * 20 : (10 - index) * 20;
-    return `<text class="plinko-slot${index === targetIndex ? " active" : ""}" data-slot="${index}" x="${x.toFixed(1)}" y="340" text-anchor="middle">${value}%</text>`;
+    return `<text class="plinko-slot" data-slot="${index}" x="${x.toFixed(1)}" y="340" text-anchor="middle">?</text>`;
   }).join("");
-  const pointText = points.map((point) => `${point.x.toFixed(1)},${point.y}`).join(";");
 
-  return `<svg class="stage-svg plinko-board" viewBox="0 0 600 350" role="img" aria-label="Plinko board. Zero percent at both edges, one hundred percent in the center."><path class="plinko-path" d="M ${points.map((point) => `${point.x.toFixed(1)} ${point.y}`).join(" L ")}"/><g>${pegs}</g><g class="plinko-ball" data-path="${pointText}" transform="translate(300 20)"><circle r="8"/></g>${dividers}<path d="M38 294h524" stroke="#53695c" stroke-width="2"/>${labels}</svg>`;
+  return `<div class="plinko-scoring">${scoreReadout()}<svg class="stage-svg plinko-board" viewBox="0 0 652.4 350" role="img" aria-label="Plinko : chaque contact lumineux rapporte des points."><g>${pegs}</g><g class="plinko-ball" data-target-slot="${targetIndex}" transform="translate(326.2 20)"><circle r="8"/></g>${dividers}<path class="plinko-divider" d="M38 322h576.4"/>${labels}</svg></div>`;
 };
 
 const makeSlotsMarkup = () => {
   const reels = [0, 1, 2].map(() => {
     const digits = Array.from({ length: 40 }, (_, index) => `<span class="slot-digit">${index % 10}</span>`).join("");
-    return `<div class="slot-reel" aria-hidden="true"><div class="slot-strip">${digits}</div></div>`;
-  }).join(`<span class="slot-separator" aria-hidden="true">·</span>`);
-  return `<div class="slots-machine" aria-label="Three spinning score reels">${reels}<span class="slots-caption">Lucky score</span></div>`;
+    return `<div class="slot-reel" aria-hidden="true"><div class="slot-strip">${digits}</div><span class="slot-glass"></span></div>`;
+  }).join("");
+  const bulbs = Array.from({ length: 14 }, (_, index) => `<span class="slot-bulb" style="--bulb:${index}"></span>`).join("");
+  return `<div class="slots-cabinet"><div class="slots-marquee">${bulbs}<strong>JACKPOT</strong></div><div class="slots-machine" aria-label="Three spinning score reels">${reels}<span class="slots-payline" aria-hidden="true"></span></div><span class="slots-caption">Lucky score</span><div class="slots-lever" data-slots-lever aria-hidden="true"><span class="slots-lever-arm"><span class="slots-lever-knob"></span></span></div></div>`;
 };
 
-const makeDiceMarkup = () => {
-  const die = () => `<div class="die" data-die aria-hidden="true">${Array.from({ length: 9 }, () => `<span class="die-dot"></span>`).join("")}</div>`;
-  return `<div class="dice-table" data-dice-table>${die()}<span class="dice-plus" aria-hidden="true">+</span>${die()}</div>`;
+const diceDigits = (score: number) => score === 100 ? "100" : String(score).padStart(2, "0");
+
+const makeDiceMarkup = (score: number) => {
+  const digits = diceDigits(score);
+  const faceNames = ["front", "right", "back", "left", "top", "bottom"];
+  const dice = [...digits].map((digit) => {
+    const others = shuffle([..."0123456789"].filter((value) => value !== digit)).slice(0, 5);
+    const faces = faceNames.map((face, index) => {
+      const value = index === 0 ? digit : others[index - 1];
+      return `<span class="die-face die-face-${face}" data-face="${face}" aria-hidden="true">${value}</span>`;
+    }).join("");
+    return `<div class="die-slot" data-die-slot data-target="${digit}" role="img" aria-label="Number die rolling"><div class="die-shadow" data-die-shadow></div><div class="die"><div class="die-cube" data-die-cube>${faces}</div></div></div>`;
+  }).join("");
+  return `<div class="dice-table" data-dice-table><div class="dice-felt"></div><div class="dice-row">${dice}</div><p class="dice-total" data-dice-total hidden></p></div>`;
 };
 
-const makeScratchMarkup = () => `<div class="scratch-area"><div class="scratch-card"><div class="scratch-score"><strong>?</strong><span>Recorded tag score</span></div><canvas class="scratch-canvas" width="720" height="300" aria-hidden="true"></canvas></div><p class="scratch-hint">Drag across the ticket, or use the button below.</p><button class="scratch-reveal" type="button">Reveal scratch card</button></div>`;
+const makeScratchMarkup = (score: number) => `<div class="scratch-area"><div class="scratch-card"><div class="scratch-score"><strong>${score}%</strong><span>Recorded tag score</span></div><canvas class="scratch-canvas" width="720" height="300" aria-hidden="true"></canvas></div><p class="scratch-hint">Drag across the ticket, or use the button below.</p><button class="scratch-reveal" type="button">Reveal scratch card</button></div>`;
 
 const getGameMarkup = (game: GameId, score: number) => {
   switch (game) {
@@ -155,9 +169,17 @@ const getGameMarkup = (game: GameId, score: number) => {
     case "slots":
       return makeSlotsMarkup();
     case "dice":
-      return makeDiceMarkup();
+      return makeDiceMarkup(score);
     case "scratch":
-      return makeScratchMarkup();
+      return makeScratchMarkup(score);
+    case "crash":
+    case "lotto":
+    case "derby":
+    case "cups":
+    case "marbles":
+    case "pachinko":
+    case "pinball":
+      return getExtraGameMarkup(game as ExtraGameId, score);
   }
 };
 
@@ -194,106 +216,396 @@ const animate = (
   signal.addEventListener("abort", onAbort, { once: true });
 });
 
+type RouletteBallPoint = { angle: number; radius: number };
+type RouletteBallPath = { points: RouletteBallPoint[]; duration: number };
+
+const makeRouletteBallPath = (reducedMotion: boolean): RouletteBallPath => {
+  const targetAngle = -Math.PI / 2;
+  const initialSpeed = 2 * Math.PI * (reducedMotion ? 0.8 + Math.random() * 0.25 : 5.2 + Math.random() * 1.8);
+  const drag = reducedMotion ? 1.15 : 0.48 + Math.random() * 0.13;
+  const stopSpeed = 0.22;
+  const stepTime = 1 / 60;
+  const totalTravel = (initialSpeed - stopSpeed) / drag;
+  let angle = targetAngle + totalTravel;
+  let angularSpeed = initialSpeed;
+  let radius = 198;
+  let radialSpeed = 0;
+  const rawPoints: RouletteBallPoint[] = [{ angle, radius }];
+  const wobblePhase = Math.random() * Math.PI * 2;
+
+  for (let step = 0; angularSpeed > stopSpeed && step < 1600; step++) {
+    const nextAngularSpeed = angularSpeed * Math.exp(-drag * stepTime);
+    angle -= ((angularSpeed + nextAngularSpeed) / 2) * stepTime;
+    angularSpeed = nextAngularSpeed;
+
+    const progress = step / Math.max(1, Math.ceil(Math.log(initialSpeed / stopSpeed) / drag / stepTime));
+    const energy = angularSpeed / initialSpeed;
+    const restingRadius = 157 + 41 * energy;
+    const radialAcceleration = (restingRadius - radius) * 42 - radialSpeed * 11 - 8;
+    radialSpeed += radialAcceleration * stepTime;
+    radius += radialSpeed * stepTime;
+
+    if (radius > 203) {
+      radius = 203;
+      radialSpeed = -Math.abs(radialSpeed) * 0.42;
+    } else if (radius < 148) {
+      radius = 148;
+      radialSpeed = Math.abs(radialSpeed) * 0.34;
+    }
+
+    const settling = clamp((progress - 0.68) / 0.32, 0, 1);
+    const bounceEnvelope = Math.sin(settling * Math.PI);
+    angle += Math.sin(settling * Math.PI * 8 + wobblePhase) * 0.045 * bounceEnvelope;
+    radius += Math.sin(settling * Math.PI * 7 + wobblePhase) * 6 * bounceEnvelope;
+    rawPoints.push({ angle, radius });
+  }
+
+  const lastPoint = rawPoints[rawPoints.length - 1];
+  const angleCorrection = targetAngle - lastPoint.angle;
+  const radiusCorrection = 156 - lastPoint.radius;
+  const points = rawPoints.map((point, index) => {
+    const progress = index / Math.max(1, rawPoints.length - 1);
+    const correction = progress * progress * (3 - 2 * progress);
+    return {
+      angle: point.angle + angleCorrection * correction,
+      radius: clamp(point.radius + radiusCorrection * correction, 145, 203),
+    };
+  });
+
+  return { points, duration: (points.length - 1) * stepTime * 1000 };
+};
+
+const animateRouletteBall = (
+  ball: SVGCircleElement,
+  path: RouletteBallPath,
+  signal: AbortSignal,
+) => new Promise<boolean>((resolve) => {
+  if (signal.aborted || path.points.length < 2) return resolve(false);
+  let animationFrame = 0;
+  let startedAt: number | null = null;
+  let finished = false;
+
+  const paint = (point: RouletteBallPoint) => {
+    ball.setAttribute("cx", (220 + Math.cos(point.angle) * point.radius).toFixed(2));
+    ball.setAttribute("cy", (220 + Math.sin(point.angle) * point.radius).toFixed(2));
+  };
+  const finish = (completed: boolean) => {
+    if (finished) return;
+    finished = true;
+    cancelAnimationFrame(animationFrame);
+    signal.removeEventListener("abort", onAbort);
+    if (completed) paint(path.points[path.points.length - 1]);
+    resolve(completed);
+  };
+  const onAbort = () => finish(false);
+  const tick = (now: number) => {
+    if (signal.aborted) return finish(false);
+    startedAt ??= now;
+    const progress = clamp((now - startedAt) / motionTime(path.duration), 0, 1);
+    const position = progress * (path.points.length - 1);
+    const lowerIndex = Math.floor(position);
+    const upperIndex = Math.min(path.points.length - 1, lowerIndex + 1);
+    const fraction = position - lowerIndex;
+    const lower = path.points[lowerIndex];
+    const upper = path.points[upperIndex];
+    paint({
+      angle: lower.angle + (upper.angle - lower.angle) * fraction,
+      radius: lower.radius + (upper.radius - lower.radius) * fraction,
+    });
+    if (progress >= 1) return finish(true);
+    animationFrame = requestAnimationFrame(tick);
+  };
+
+  signal.addEventListener("abort", onAbort, { once: true });
+  animationFrame = requestAnimationFrame(tick);
+});
+
 const rollWheel = async (stage: HTMLElement, game: "wheel" | "roulette", signal: AbortSignal) => {
   const rotor = stage.querySelector<SVGElement>(game === "roulette" ? ".roulette-rotor" : ".wheel-rotor");
   if (!rotor) return false;
   const target = Number(rotor.dataset.target);
   const count = Number(rotor.dataset.count);
-  const end = 360 * (game === "roulette" ? 9 : 7) - ((target + 0.5) * 360) / count;
-  const rotorRun = animate(rotor, [{ transform: "rotate(0deg)" }, { transform: `rotate(${end}deg)` }], {
-    duration: game === "roulette" ? 4600 : 4100,
-    easing: "cubic-bezier(.08,.78,.17,1)",
+  const landing = game === "roulette" ? 0.5 : Number(rotor.dataset.landing);
+  const reducedMotion = prefersReducedMotion();
+  const turns = reducedMotion
+    ? (game === "roulette" ? 1 : 2)
+    : game === "roulette"
+      ? 8 + Math.floor(Math.random() * 4)
+      : 10 + Math.floor(Math.random() * 5);
+  const end = 360 * turns - ((target + landing) * 360) / count;
+  const ball = game === "roulette" ? stage.querySelector<SVGCircleElement>(".roulette-ball") : null;
+  const ballPath = ball ? makeRouletteBallPath(reducedMotion) : null;
+  const duration = ballPath?.duration ?? 8200 + Math.random() * 2400;
+  const animationOptions = {
+    duration,
+    easing: game === "roulette" ? "cubic-bezier(.07,.82,.13,1)" : "cubic-bezier(.045,.86,.12,1)",
     fill: "forwards",
-  }, signal);
+  } as const;
+  const rotorRun = animate(rotor, [{ transform: "rotate(0deg)" }, { transform: `rotate(${end}deg)` }], animationOptions, signal);
+  const labelRuns = [...rotor.querySelectorAll<SVGTextElement>(".wheel-label, .roulette-label")].map((label) => animate(label, [
+    { transform: "rotate(0deg)" },
+    { transform: `rotate(${-end}deg)` },
+  ], animationOptions, signal));
+  const wheelRun = Promise.all([rotorRun, ...labelRuns]).then((results) => results.every(Boolean));
 
-  if (game === "roulette") {
-    const orbit = stage.querySelector<SVGElement>(".roulette-orbit");
-    if (orbit) {
-      const ballRun = animate(orbit, [{ transform: "rotate(0deg)" }, { transform: "rotate(3600deg)" }], {
-        duration: 4500,
-        easing: "cubic-bezier(.12,.75,.18,1)",
-        fill: "forwards",
-      }, signal);
-      const [wheelDone, ballDone] = await Promise.all([rotorRun, ballRun]);
-      return wheelDone && ballDone;
-    }
+  if (ball && ballPath) {
+    const ballRun = animateRouletteBall(ball, ballPath, signal);
+    const [wheelDone, ballDone] = await Promise.all([wheelRun, ballRun]);
+    return wheelDone && ballDone;
   }
-  return rotorRun;
+  return wheelRun;
 };
 
 const runPlinko = async (stage: HTMLElement, score: number, signal: AbortSignal) => {
   const ball = stage.querySelector<SVGGElement>(".plinko-ball");
   if (!ball) return false;
-  const points = (ball.dataset.path ?? "").split(";").map((point) => {
-    const [x, y] = point.split(",").map(Number);
-    return { x, y };
-  });
-  const frames = points.map((point, index) => ({
-    transform: `translate(${point.x}px, ${point.y}px)`,
-    offset: index / Math.max(points.length - 1, 1),
+  let targetIndex = Number(ball.dataset.targetSlot);
+  const pegs = [...stage.querySelectorAll<SVGCircleElement>(".plinko-peg")].map((peg) => ({
+    x: Number(peg.getAttribute("cx")),
+    y: Number(peg.getAttribute("cy")),
+    radius: Number(peg.getAttribute("r")),
   }));
-  const completed = await animate(ball, frames, {
-    duration: 3300,
-    easing: "cubic-bezier(.25,.24,.16,1)",
-    fill: "forwards",
-  }, signal);
+  if (!Number.isInteger(targetIndex) || pegs.length === 0) return false;
+
+  const leftEdge = 38;
+  const slotWidth = 52.4;
+  const rightEdge = leftEdge + slotWidth * 11;
+  const boardCenter = (leftEdge + rightEdge) / 2;
+  const ballRadius = 8;
+  let targetLeft = leftEdge + targetIndex * slotWidth;
+  let targetRight = targetLeft + slotWidth;
+  const targetX = (targetLeft + targetRight) / 2;
+  const stepTime = 1 / 120;
+
+  const simulateDrop = () => {
+    const attempts = 32;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      if (signal.aborted) return null;
+
+      let x = boardCenter + (Math.random() - 0.5) * 12;
+      let y = 20;
+      let vx = (targetX - x) / 0.88 + (Math.random() - 0.5) * 112;
+      let vy = Math.random() * 24;
+      let enteredTarget = false;
+      let floorContacts = 0;
+      let points = [{ x, y, hit: -1 }];
+
+      for (let step = 0; step < 1500; step++) {
+        if (signal.aborted) return null;
+
+        let hit = -1;
+        vy += 740 * stepTime;
+        x += vx * stepTime;
+        y += vy * stepTime;
+
+        if (!enteredTarget) {
+          for (const [pegIndex, peg] of pegs.entries()) {
+            const dx = x - peg.x;
+            const dy = y - peg.y;
+            const minimumDistance = ballRadius + peg.radius;
+            const distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared >= minimumDistance * minimumDistance) continue;
+
+            const distance = Math.sqrt(distanceSquared) || 0.001;
+            const normalX = distance > 0.001 ? dx / distance : (Math.random() > 0.5 ? 1 : -1);
+            const normalY = distance > 0.001 ? dy / distance : -0.1;
+            x = peg.x + normalX * minimumDistance;
+            y = peg.y + normalY * minimumDistance;
+
+            const normalSpeed = vx * normalX + vy * normalY;
+            if (normalSpeed < 0) {
+              hit = pegIndex;
+              const restitution = 0.76 + Math.random() * 0.12;
+              vx -= (1 + restitution) * normalSpeed * normalX;
+              vy -= (1 + restitution) * normalSpeed * normalY;
+
+              const tangentSpeed = vx * -normalY + vy * normalX;
+              const pinSpin = clamp(tangentSpeed * 0.045 + (Math.random() - 0.5) * 14, -18, 18);
+              vx += pinSpin * normalY;
+              vy -= pinSpin * normalX;
+            }
+          }
+
+          if (x < leftEdge + ballRadius) {
+            x = leftEdge + ballRadius;
+            if (vx < 0) vx = -vx * 0.78;
+          } else if (x > rightEdge - ballRadius) {
+            x = rightEdge - ballRadius;
+            if (vx > 0) vx = -vx * 0.78;
+          }
+
+          if (y >= 294) {
+            targetIndex = clamp(Math.floor((x - leftEdge) / slotWidth), 0, 10);
+            targetLeft = leftEdge + targetIndex * slotWidth;
+            targetRight = targetLeft + slotWidth;
+            enteredTarget = true;
+            // Entry stays at the simulated position; the slot walls stop it on contact.
+            vx *= .72;
+          }
+        } else {
+          if (x < targetLeft + ballRadius) {
+            x = targetLeft + ballRadius;
+            if (vx < 0) vx = -vx * 0.2;
+          } else if (x > targetRight - ballRadius) {
+            x = targetRight - ballRadius;
+            if (vx > 0) vx = -vx * 0.2;
+          }
+
+          if (y > 322 - ballRadius) {
+            y = 322 - ballRadius;
+            vy = -Math.abs(vy) * 0.24;
+            vx *= 0.72;
+            floorContacts++;
+            if (floorContacts >= 3 && Math.abs(vy) < 80) {
+              points.push({ x, y, hit });
+              return points;
+            }
+          }
+        }
+
+        points.push({ x, y, hit });
+      }
+    }
+    return null;
+  };
+
+  let points = simulateDrop();
+  for (let retry = 0; points && !points.some(p => p.hit >= 0) && retry < 32; retry++) points = simulateDrop();
+  if (!points || signal.aborted) return false;
+  const awards = impactAwards(points.flatMap((p, frame) => p.hit >= 0 ? [{frame,target:p.hit,x:p.x,y:p.y}] : []), score);
+  const svg = ball.ownerSVGElement!;
+  const live = stage.querySelector<HTMLElement>("[data-live-score]")!;
+  const caption = stage.querySelector<HTMLElement>("[data-impact-caption]")!;
+  const pegElements = [...stage.querySelectorAll<SVGCircleElement>(".plinko-peg")];
+  let awarded = 0, total = 0;
+  const updateTargets = () => pegElements.forEach((el,i) => {
+    const next=awards.slice(awarded).find(a=>a.target===i);
+    el.classList.toggle("is-scoring",(next?.points??1)>0);
+  });
+  updateTargets();
+  const flashes = new Map<number,number>();
+  const completed = await frameLoop(prefersReducedMotion()?450:4800,signal,p=>{
+    const frame=p*(points!.length-1),index=Math.floor(frame),mix=frame-index;
+    const a=points![index],b=points![index+1]??a;
+    ball.setAttribute("transform",`translate(${a.x+(b.x-a.x)*mix} ${a.y+(b.y-a.y)*mix})`);
+    while(awarded<awards.length&&awards[awarded].frame<=index){
+      const award=awards[awarded++];total+=award.points;
+      live.textContent=`${total}%`;live.dataset.total=String(total);
+      caption.textContent=award.points?`Impact +${award.points}%`:'Impact neutre · aucun point';
+      flashes.set(award.target,p);
+      if(!prefersReducedMotion())showImpact(svg,award);
+      updateTargets();
+    }
+    pegElements.forEach((el,i)=>el.classList.toggle("is-hit",p-(flashes.get(i)??-1)<.06));
+  });
   if (!completed) return false;
-  const targetSlot = stage.querySelector<SVGTextElement>(".plinko-slot.active");
-  if (targetSlot) targetSlot.textContent = `${score}%`;
+  if(total!==score)throw new Error("Plinko impact total mismatch");
+  stage.dataset.phase="result";
+  live.dataset.result=String(total);
+  caption.textContent="Partie terminée · points conservés";
+  const targetSlot = stage.querySelector<SVGTextElement>(`.plinko-slot[data-slot="${targetIndex}"]`);
+  if (targetSlot) {
+    targetSlot.textContent = `${score}%`;
+    targetSlot.classList.add("active");
+  }
   return true;
 };
 
 const runSlots = async (stage: HTMLElement, score: number, signal: AbortSignal) => {
   const strips = [...stage.querySelectorAll<HTMLElement>(".slot-strip")];
+  const lever = stage.querySelector<HTMLElement>("[data-slots-lever] .slots-lever-arm");
   const digits = String(score).padStart(3, "0");
+  if (lever && !(await animate(lever, [
+    { transform: "rotateX(0deg)" },
+    { transform: "rotateX(-62deg)", offset: 0.45 },
+    { transform: "rotateX(0deg)" },
+  ], { duration: 650, easing: "ease-in-out" }, signal))) return false;
   const animations = strips.map(async (strip, index) => {
-    if (!(await wait(index * 130, signal))) return false;
     const digit = Number(digits[index]);
     const rowHeight = strip.querySelector<HTMLElement>(".slot-digit")?.getBoundingClientRect().height ?? 82;
-    return animate(strip, [
-      { transform: "translateY(0px)" },
-      { transform: `translateY(-${(30 + digit) * rowHeight}px)` },
+    const end = (30 + digit) * rowHeight;
+    // Reels stop left to right, overshoot slightly and snap back like a real mechanical stop.
+    const landed = await animate(strip, [
+      { transform: "translateY(0px)", filter: "blur(0px)", offset: 0 },
+      { transform: `translateY(-${(end * 0.25).toFixed(1)}px)`, filter: "blur(3px)", offset: 0.25 },
+      { transform: `translateY(-${(end * 0.9).toFixed(1)}px)`, filter: "blur(2px)", offset: 0.72 },
+      { transform: `translateY(-${(end + rowHeight * 0.16).toFixed(1)}px)`, filter: "blur(0px)", offset: 0.9 },
+      { transform: `translateY(-${end.toFixed(1)}px)`, filter: "blur(0px)", offset: 1 },
     ], {
-      duration: 2700,
-      easing: "cubic-bezier(.12,.78,.17,1)",
+      duration: 2100 + index * 750,
+      easing: "cubic-bezier(.3,.1,.3,1)",
       fill: "forwards",
     }, signal);
+    if (landed) strip.parentElement?.classList.add("is-stopped");
+    return landed;
   });
   const results = await Promise.all(animations);
-  return results.every(Boolean);
+  if (!results.every(Boolean)) return false;
+  stage.querySelector(".slots-cabinet")?.classList.add("is-win");
+  return wait(450, signal);
 };
 
-const setDieValue = (die: HTMLElement, value: number) => {
-  const pips: Record<number, number[]> = {
-    1: [4],
-    2: [0, 8],
-    3: [0, 4, 8],
-    4: [0, 2, 6, 8],
-    5: [0, 2, 4, 6, 8],
-    6: [0, 2, 3, 5, 6, 8],
-  };
-  die.querySelectorAll<HTMLElement>(".die-dot").forEach((dot, index) => {
-    dot.classList.toggle("visible", pips[value].includes(index));
+const runDice = async (stage: HTMLElement, score: number, signal: AbortSignal) => {
+  const slots = [...stage.querySelectorAll<HTMLElement>("[data-die-slot]")];
+  const total = stage.querySelector<HTMLElement>("[data-dice-total]");
+  const expectedDigits = diceDigits(score);
+  if (slots.length !== expectedDigits.length
+    || slots.some((slot, index) => slot.dataset.target !== expectedDigits[index])) return false;
+
+  const reduced = prefersReducedMotion();
+  const rolls = slots.map(async (slot, index) => {
+    const cube = slot.querySelector<HTMLElement>("[data-die-cube]");
+    const die = slot.querySelector<HTMLElement>(".die");
+    const shadow = slot.querySelector<HTMLElement>("[data-die-shadow]");
+    if (!cube || !die || !shadow) return false;
+    if (!(await wait(index * 90, signal))) return false;
+
+    // Each die is thrown from the left edge, bounces three times and tumbles until it rests on its front face.
+    const throwX = -(260 + index * 70 + Math.random() * 60);
+    const drift = (Math.random() - 0.5) * 40;
+    const turnsX = reduced ? 1 : 3 + Math.floor(Math.random() * 2);
+    const turnsY = reduced ? 1 : 2 + Math.floor(Math.random() * 2);
+    const finalX = turnsX * 360;
+    const finalY = turnsY * 360;
+    const duration = 2300 + Math.random() * 500;
+    const hops = [
+      { offset: 0, x: throwX, y: -150, z: 0.05 },
+      { offset: 0.3, x: throwX * 0.45, y: 0, z: 0.55 },
+      { offset: 0.48, x: throwX * 0.22, y: -70, z: 0.72 },
+      { offset: 0.64, x: throwX * 0.08, y: 0, z: 0.86 },
+      { offset: 0.76, x: throwX * 0.03, y: -22, z: 0.94 },
+      { offset: 0.86, x: 0, y: 0, z: 0.985 },
+      { offset: 1, x: 0, y: 0, z: 1 },
+    ];
+    const easing = "cubic-bezier(.3,.6,.4,1)";
+    const moved = await Promise.all([
+      animate(die, hops.map(({ offset, x, y }) => ({
+        offset,
+        transform: `translate3d(${x.toFixed(1)}px, ${(y + drift * (1 - offset)).toFixed(1)}px, 0)`,
+        easing: y === 0 ? "cubic-bezier(.2,.7,.4,1)" : "cubic-bezier(.6,0,.8,.4)",
+      })), { duration, fill: "forwards" }, signal),
+      animate(cube, hops.map(({ offset, z }) => ({
+        offset,
+        transform: `rotateX(${(finalX * z).toFixed(1)}deg) rotateY(${(finalY * z).toFixed(1)}deg) rotateZ(${((1 - z) * 140).toFixed(1)}deg)`,
+      })), { duration, easing, fill: "forwards" }, signal),
+      animate(shadow, hops.map(({ offset, x, y }) => ({
+        offset,
+        transform: `translateX(${x.toFixed(1)}px) scale(${(1 + y / 260).toFixed(3)})`,
+        opacity: String((0.65 + y / 400).toFixed(3)),
+      })), { duration, fill: "forwards" }, signal),
+    ]);
+    if (!moved.every(Boolean)) return false;
+    cube.style.transform = `rotateX(${finalX}deg) rotateY(${finalY}deg)`;
+    slot.classList.add("is-landed");
+    slot.setAttribute("aria-label", `Die landed on ${slot.dataset.target ?? "0"}`);
+    return true;
   });
-};
-
-const runDice = async (stage: HTMLElement, signal: AbortSignal) => {
-  const table = stage.querySelector<HTMLElement>("[data-dice-table]");
-  const dice = [...stage.querySelectorAll<HTMLElement>("[data-die]")];
-  if (!table || dice.length !== 2) return false;
-  const first = Math.floor(Math.random() * 6) + 1;
-  const second = Math.floor(Math.random() * 6) + 1;
-  table.classList.add("is-rolling");
-  const rolled = await wait(1500, signal);
-  table.classList.remove("is-rolling");
-  if (!rolled) return false;
-  setDieValue(dice[0], first);
-  setDieValue(dice[1], second);
-  return animate(table, [
-    { transform: "translateY(4px) scale(.98)" },
-    { transform: "translateY(-5px) scale(1.02)" },
-    { transform: "translateY(0) scale(1)" },
-  ], { duration: 460, easing: "cubic-bezier(.16,1,.3,1)" }, signal);
+  if (!(await Promise.all(rolls)).every(Boolean)) return false;
+  if (total) {
+    total.textContent = `${score}%`;
+    total.hidden = false;
+  }
+  return wait(500, signal);
 };
 
 const drawScratchLayer = (canvas: HTMLCanvasElement) => {
@@ -428,79 +740,111 @@ const runGame = (game: GameId, stage: HTMLElement, score: number, signal: AbortS
     case "slots":
       return runSlots(stage, score, signal);
     case "dice":
-      return runDice(stage, signal);
+      return runDice(stage, score, signal);
     case "scratch":
       return runScratch(stage, signal);
+    case "crash":
+    case "lotto":
+    case "derby":
+    case "cups":
+    case "marbles":
+    case "pachinko":
+    case "pinball":
+    {
+      const fx: FxHelpers = {
+        animate,
+        wait,
+        reduced: prefersReducedMotion,
+      };
+      return runExtraGame(game as ExtraGameId, stage, score, signal, fx);
+    }
   }
 };
 
-const run = () => {
-  const tags = getAllTags();
-  const tag = tags?.[0];
-  if (!tag || tag.status !== "SUCCEEDED" || tag.percentage === undefined) return;
+const demoRequestKey = "__intraTweakerWinwheelDemo";
 
-  const score = clamp(Math.round(tag.percentage), 0, 100);
-  const tracePercentage = tag.element.getElementsByTagName("trace-symbol").item(0) as HTMLElement | null;
-  const actionContainer = tag.element.getElementsByClassName("list__item__right").item(0) as HTMLElement | null;
-  if (!tracePercentage || !actionContainer) return;
+const getEnabledGameIds = async (): Promise<GameId[]> => {
+  const extension = globalThis as typeof globalThis & {
+    browser?: { runtime?: { sendMessage?: (message: unknown) => Promise<any> } };
+    chrome?: { runtime?: { sendMessage?: (message: unknown) => Promise<any> } };
+  };
+  const runtime = extension.browser?.runtime ?? extension.chrome?.runtime;
+  if (!runtime?.sendMessage) return games.map(({ id }) => id);
 
-  const originalDisplay = tracePercentage.style.display;
-  const originalRole = tag.element.getAttribute("role");
-  const originalTabIndex = tag.element.getAttribute("tabindex");
+  try {
+    const settings = await runtime.sendMessage({ action: "fetchWinwheelGameSettings" });
+    return games.filter(({ id }) => settings?.[id] === true).map(({ id }) => id);
+  } catch {
+    return [];
+  }
+};
+
+let tagOverlaySequence = 0;
+
+const createGameOverlay = ({
+  score,
+  tag,
+  isDemo,
+  initialGame,
+}: {
+  score: number;
+  tag: Tag | null;
+  isDemo: boolean;
+  initialGame: GameId;
+}) => {
+  const tracePercentage = tag?.element.getElementsByTagName("trace-symbol").item(0) as HTMLElement | null;
+  const actionContainer = tag?.element.getElementsByClassName("list__item__right").item(0) as HTMLElement | null;
+  if (!isDemo && (!tag || !tracePercentage || !actionContainer)) return;
+
+  const rootId = isDemo ? "intra-tweaker-winwheel-demo-root" : `intra-tweaker-winwheel-root${tagOverlaySequence++ ? "-" + tagOverlaySequence : ""}`;
+  if (document.getElementById(rootId)) return;
+
+  const originalDisplay = tracePercentage?.style.display ?? "";
+  const originalRole = tag?.element.getAttribute("role");
+  const originalTabIndex = tag?.element.getAttribute("tabindex");
   const host = document.createElement("div");
-  host.id = "intra-tweaker-winwheel-root";
+  host.id = rootId;
   const shadow = host.attachShadow({ mode: "open" });
   const style = document.createElement("style");
-  style.textContent = casinoStyles;
+  style.textContent = casinoStyles + extraGameStyles + physicalGameStyles;
 
   const overlay = document.createElement("div");
   overlay.className = "casino-overlay";
   overlay.hidden = true;
   overlay.setAttribute("aria-hidden", "true");
-  overlay.innerHTML = `
-    <section class="casino-dialog" role="dialog" aria-modal="true" aria-labelledby="casino-title" tabindex="-1">
-      <header class="casino-header">
-        <div class="casino-brand"><span class="brand-mark">${iconMarkup.wheel}</span><span>Intra Tweaker · Score reveal</span></div>
-        <button class="casino-close" type="button" aria-label="Close score reveal"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>
-      </header>
-      <main class="casino-main">
-        <div class="casino-intro"><h2 id="casino-title">Pick your game</h2><p>Choose a little luck before seeing your tag percentage.</p></div>
-        <div class="game-layout">
-          <aside class="game-picker"><p class="picker-label">Choose a game</p><nav class="game-selector" aria-label="Choose a mini-game">${games.map((game) => `<button class="game-choice" type="button" data-game="${game.id}" style="--choice-accent:${game.accent}" aria-pressed="false"><span class="game-icon">${game.icon}</span><span>${game.name}</span></button>`).join("")}</nav></aside>
-          <section class="game-panel" data-game="wheel" aria-label="Selected mini-game">
-            <div class="game-panel-head"><div><h3 class="game-name">Prize wheel</h3><p class="game-description"></p></div><span class="game-count"></span></div>
-            <div class="game-stage" id="game-stage"></div>
-            <div class="game-controls"><p class="game-status" role="status" aria-live="polite">Ready when you are.</p><button class="game-start" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 5 10 7-10 7z"/></svg><span>Start the reveal</span></button></div>
-            <div class="score-result" hidden tabindex="-1"><span class="score-result-label">Your saved tag score</span><strong class="score-result-value"></strong></div>
-          </section>
-        </div>
-        <p class="casino-note">The game only reveals your saved tag score. It never changes the result.</p>
-      </main>
-    </section>`;
+  overlay.innerHTML = [
+    '<section class="casino-dialog" role="dialog" aria-modal="true" aria-labelledby="game-title" aria-describedby="game-description" tabindex="-1">',
+    '<h2 class="sr-only" id="game-title">Prize wheel</h2>',
+    '<p class="sr-only" id="game-description"></p>',
+    '<button class="casino-close" type="button" aria-label="Close game"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button>',
+    '<section class="game-panel" data-game="wheel" aria-label="Mini-game">',
+    '<div class="game-stage" id="game-stage"></div>',
+    '<p class="game-status sr-only" role="status" aria-live="polite">Ready when you are.</p>',
+    '<div class="score-result" hidden tabindex="-1"><span class="score-result-label">Your saved tag score</span><strong class="score-result-value"></strong></div>',
+    '</section></section>',
+  ].join("");
   shadow.append(style, overlay);
   document.body.appendChild(host);
 
-  const choiceButtons = [...shadow.querySelectorAll<HTMLButtonElement>(".game-choice")];
   const panel = shadow.querySelector<HTMLElement>(".game-panel")!;
   const stage = shadow.querySelector<HTMLElement>("#game-stage")!;
-  const gameName = shadow.querySelector<HTMLElement>(".game-name")!;
-  const gameDescription = shadow.querySelector<HTMLElement>(".game-description")!;
-  const gameCount = shadow.querySelector<HTMLElement>(".game-count")!;
+  const gameName = shadow.querySelector<HTMLElement>("#game-title")!;
+  const gameDescription = shadow.querySelector<HTMLElement>("#game-description")!;
   const gameStatus = shadow.querySelector<HTMLElement>(".game-status")!;
-  const startButton = shadow.querySelector<HTMLButtonElement>(".game-start")!;
-  const startLabel = startButton.querySelector<HTMLElement>("span")!;
   const scoreResult = shadow.querySelector<HTMLElement>(".score-result")!;
+  const scoreResultLabel = shadow.querySelector<HTMLElement>(".score-result-label")!;
   const scoreResultValue = shadow.querySelector<HTMLElement>(".score-result-value")!;
   const closeButton = shadow.querySelector<HTMLButtonElement>(".casino-close")!;
-  const dialog = shadow.querySelector<HTMLElement>(".casino-dialog")!;
 
-  let selectedGame: GameId = "wheel";
+  let selectedGame: GameId = initialGame;
   let isOpen = false;
   let isRunning = false;
   let hasRevealed = false;
   let activeController: AbortController | null = null;
+  let closeTimer: number | null = null;
   let triggerButton: HTMLButtonElement | null = null;
   let previousOverflow = "";
+  const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
   const cancelRun = () => {
     activeController?.abort();
@@ -518,26 +862,15 @@ const run = () => {
     panel.classList.remove("has-result");
     gameName.textContent = game.name;
     gameDescription.textContent = game.description;
-    gameCount.textContent = `Game ${games.findIndex((candidate) => candidate.id === id) + 1} / ${games.length}`;
+    delete stage.dataset.phase;
     stage.innerHTML = getGameMarkup(id, score);
-    if (id === "dice") {
-      const dice = [...stage.querySelectorAll<HTMLElement>("[data-die]")];
-      setDieValue(dice[0], 2);
-      setDieValue(dice[1], 5);
-    }
     scoreResult.hidden = true;
     scoreResultValue.textContent = "";
     gameStatus.textContent = "Ready when you are.";
-    startButton.disabled = false;
-    startLabel.textContent = "Start the reveal";
-    choiceButtons.forEach((button) => {
-      button.disabled = false;
-      button.setAttribute("aria-pressed", String(button.dataset.game === id));
-    });
   };
 
   const finishReveal = () => {
-    if (!hasRevealed) return;
+    if (!hasRevealed || isDemo || !tag || !tracePercentage) return;
     if (originalDisplay) tracePercentage.style.display = originalDisplay;
     else tracePercentage.style.removeProperty("display");
     triggerButton?.remove();
@@ -549,6 +882,10 @@ const run = () => {
 
   const closeOverlay = () => {
     if (!isOpen) return;
+    if (closeTimer !== null) {
+      window.clearTimeout(closeTimer);
+      closeTimer = null;
+    }
     cancelRun();
     isOpen = false;
     overlay.classList.remove("is-open");
@@ -559,41 +896,36 @@ const run = () => {
     const restoreFocus = triggerButton;
     if (revealed) finishReveal();
     triggerButton = null;
-    if (revealed) (tag.element as HTMLElement).focus();
-    else restoreFocus?.focus();
+    if (isDemo) host.remove();
+    if (tag && revealed) (tag.element as HTMLElement).focus();
+    else if (restoreFocus) restoreFocus.focus();
+    else previousFocus?.focus();
   };
 
-  const openOverlay = (button: HTMLButtonElement) => {
+  const openOverlay = (button: HTMLButtonElement | null, gameId: GameId) => {
     triggerButton = button;
     hasRevealed = false;
     previousOverflow = document.documentElement.style.overflow;
     document.documentElement.style.overflow = "hidden";
-    renderGame(games[Math.floor(Math.random() * games.length)].id);
+    renderGame(gameId);
     overlay.hidden = false;
     overlay.setAttribute("aria-hidden", "false");
     isOpen = true;
     requestAnimationFrame(() => overlay.classList.add("is-open"));
     closeButton.focus();
+    void startGame();
   };
 
-  const startGame = async () => {
-    if (hasRevealed) {
-      closeOverlay();
-      return;
-    }
+  async function startGame() {
     if (isRunning || !isOpen) return;
 
     isRunning = true;
     panel.classList.add("is-running");
-    startButton.disabled = true;
-    startLabel.textContent = selectedGame === "scratch" ? "Scratch the ticket…" : "In progress…";
     gameStatus.textContent = selectedGame === "scratch"
       ? "Drag across the card, or use its reveal button."
-      : "Your tag score is waiting at the finish.";
-    gameStatus.tabIndex = -1;
-    gameStatus.focus();
-    choiceButtons.forEach((button) => { button.disabled = true; });
-
+      : isDemo
+        ? "A random score is waiting at the finish."
+        : "Your tag score is waiting at the finish.";
     const controller = new AbortController();
     activeController = controller;
     try {
@@ -605,19 +937,21 @@ const run = () => {
       isRunning = false;
       panel.classList.remove("is-running");
       panel.classList.add("has-result");
-      scoreResultValue.textContent = `${score}%`;
+      scoreResultLabel.textContent = isDemo ? "Random demo result" : "Your saved tag score";
+      scoreResultValue.textContent = String(score) + "%";
       scoreResult.hidden = false;
-      gameStatus.textContent = `Saved tag score revealed: ${score}%.`;
-      startButton.disabled = false;
-      startLabel.textContent = "Done";
-      startButton.focus();
-      choiceButtons.forEach((button) => { button.disabled = true; });
-    } catch {
+      gameStatus.textContent = isDemo
+        ? "Random demo result: " + score + "%."
+        : "Saved tag score revealed: " + score + "%.";
+      closeTimer = window.setTimeout(() => {
+        closeTimer = null;
+        closeOverlay();
+      }, 2600);
+    } catch (error) {
       if (!controller.signal.aborted && isOpen) {
-        gameStatus.textContent = "Game could not finish. Try again.";
-        startButton.disabled = false;
-        startLabel.textContent = "Try again";
-        choiceButtons.forEach((button) => { button.disabled = false; });
+        console.error("Winwheel animation failed", selectedGame, error);
+        gameStatus.classList.remove("sr-only");
+        gameStatus.textContent = "Animation interrompue. Fermez puis relancez le jeu.";
       }
     } finally {
       if (activeController === controller) {
@@ -628,17 +962,8 @@ const run = () => {
         }
       }
     }
-  };
+  }
 
-  shadow.querySelector(".game-selector")!.addEventListener("click", (event) => {
-    const button = (event.target as HTMLElement).closest<HTMLButtonElement>(".game-choice");
-    const nextGame = button?.dataset.game;
-    if (!button || !isGameId(nextGame) || hasRevealed) return;
-    cancelRun();
-    renderGame(nextGame);
-  });
-
-  startButton.addEventListener("click", () => { void startGame(); });
   closeButton.addEventListener("click", closeOverlay);
   overlay.addEventListener("click", (event) => {
     if (event.target === overlay) closeOverlay();
@@ -664,23 +989,74 @@ const run = () => {
     }
   });
 
+  if (isDemo) {
+    openOverlay(null, initialGame);
+    return;
+  }
+
+  if (!tag || !tracePercentage || !actionContainer) return;
   const button = document.createElement("button");
   button.type = "button";
   button.classList.add("button__big");
-  button.textContent = "Reveal your score";
+  button.textContent = "Lancer un mini-jeu";
   button.setAttribute("aria-haspopup", "dialog");
   tag.element.setAttribute("role", "group");
   tag.element.setAttribute("tabindex", "-1");
-  button.addEventListener("click", (event) => {
+  tracePercentage.style.display = "none";
+  button.addEventListener("click", async (event) => {
     event.preventDefault();
     event.stopPropagation();
     if (isOpen || button.disabled) return;
-    tracePercentage.style.display = "none";
-    openOverlay(button);
-  });
 
-  tracePercentage.style.display = "none";
+    const enabledGames = await getEnabledGameIds();
+    if (enabledGames.length === 0) {
+      button.textContent = "Enable a mini-game in Intra Tweaker";
+      return;
+    }
+
+    button.textContent = "Lancer un mini-jeu";
+    const gameId = enabledGames[Math.floor(Math.random() * enabledGames.length)];
+    openOverlay(button, gameId);
+  });
   actionContainer.prepend(button);
+  return () => {
+    if (isOpen) closeOverlay();
+    else cancelRun();
+    button.remove();
+    host.remove();
+    tracePercentage.style.display = originalDisplay;
+    if (originalRole === null || originalRole === undefined) tag.element.removeAttribute("role");
+    else tag.element.setAttribute("role", originalRole);
+    if (originalTabIndex === null || originalTabIndex === undefined) tag.element.removeAttribute("tabindex");
+    else tag.element.setAttribute("tabindex", originalTabIndex);
+  };
+};
+
+const run = () => {
+  const globalScope = globalThis as typeof globalThis & Record<string, unknown>;
+  const requestedDemoGame = globalScope[demoRequestKey];
+  delete globalScope[demoRequestKey];
+
+  const tag = getAllTags()?.find((candidate) =>
+    candidate.status === "SUCCEEDED" && candidate.percentage !== undefined,
+  );
+
+  if (isGameId(requestedDemoGame)) {
+    createGameOverlay({
+      score: tag?.status === "SUCCEEDED" ? clamp(Math.round(tag.percentage ?? 0), 0, 100) : Math.floor(Math.random() * 101),
+      tag: null,
+      isDemo: true,
+      initialGame: requestedDemoGame,
+    });
+    return;
+  }
+
+  const watcherKey = "__intraTweakerWinwheelWatcher";
+  const previous = globalScope[watcherKey];
+  if (typeof previous === "function") previous();
+  globalScope[watcherKey] = watchTagResults((tag, score) => createGameOverlay({
+    score, tag, isDemo: false, initialGame: "wheel",
+  }));
 };
 
 export default defineUnlistedScript(() => {
