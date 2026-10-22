@@ -80,12 +80,12 @@ To update: download the new zip, replace the folder content, then click the relo
 
 ### Firefox
 
-1. Download [`intra-tweaker-firefox.zip`](https://github.com/Fuzois21/intra-tweaker/releases/latest/download/intra-tweaker-firefox.zip).
-2. Open `about:debugging#/runtime/this-firefox`.
-3. Click **Load Temporary Add-on…** and select the zip.
-4. In `about:addons` > Intra Tweaker > Permissions, tick everything.
+The release ships an unsigned [`intra-tweaker.xpi`](https://github.com/Fuzois21/intra-tweaker/releases/latest/download/intra-tweaker.xpi).
 
-Firefox removes temporary add-ons when it closes: redo step 3 after a restart, or use the signed version from the [original releases](https://github.com/matiix310/intra-tweaker/releases/).
+- **Firefox Developer Edition / Nightly / ESR**: open `about:config`, set `xpinstall.signatures.required` to `false`, then drag the `.xpi` onto Firefox (or `about:addons` > ⚙ > **Install Add-on From File…**). It stays installed.
+- **Regular Firefox** (refuses unsigned add-ons): open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…** and pick the `.xpi`. It is removed when Firefox closes.
+
+Then, in `about:addons` > Intra Tweaker > Permissions, tick everything.
 
 ### Publishing a new release (maintainers)
 

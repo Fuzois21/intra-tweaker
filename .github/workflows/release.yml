@@ -31,6 +31,7 @@ jobs:
           # Stable names so the README can link to releases/latest/download/...
           cp .output/*-chrome.zip intra-tweaker-chrome.zip
           cp .output/*-firefox.zip intra-tweaker-firefox.zip
+          cp .output/*-firefox.zip intra-tweaker.xpi
           echo "TAG=v$EXT_VERSION" >> "$GITHUB_ENV"
       - name: Release
         uses: softprops/action-gh-release@v3
@@ -40,3 +41,4 @@ jobs:
           files: |
             intra-tweaker-chrome.zip
             intra-tweaker-firefox.zip
+            intra-tweaker.xpi
