@@ -1,5 +1,5 @@
 <!doctype html><html lang="fr"><meta charset="utf-8"><title>Points gagnés pendant la partie</title><style>body{background:#101b15;color:#eee;font:14px system-ui;margin:12px}h1{font-size:20px}iframe{width:100%;height:740px;border:1px solid #567}li{padding:4px}.ok{color:#c9e695}.fail{color:#ff9690}</style><h1>Score lié aux impacts · contrôle réel</h1><p id="state">Démarrage</p><ol id="results"></ol><iframe title="Partie en cours"></iframe><script type="module">
-const cases=[['pinball',42],['pachinko',92],['plinko',100],['pinball',0],['pinball',1],['pachinko',1],['plinko',0]];
+const cases=[['pinball',42],['plinko',92],['plinko',100],['pinball',0],['pinball',1],['plinko',1],['plinko',0]];
 const frame=document.querySelector('iframe');let failures=0;
 for(const [game,score] of cases){
  document.querySelector('#state').textContent=game+' · cible '+score+'%';

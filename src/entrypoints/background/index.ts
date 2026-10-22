@@ -62,9 +62,8 @@ const enqueueModuleChange = (change: () => Promise<unknown>) => {
 const initModules = async () => {
   const modulesState = await initModulesState(modules);
 
-  await browser.userScripts.configureWorld({
-    messaging: true,
-  });
+  if (await canUseUserScripts())
+    await browser.userScripts.configureWorld({ messaging: true }).catch(console.error);
 
   for (let module of modules) {
     let i = 0;
@@ -80,30 +79,68 @@ const initModules = async () => {
           })
           .catch(console.error);
       } else if (subModule.kind == "content") {
+        const id = module.name + i++;
+        // One failing module must not stop the next ones from being registered.
         if (modulesState.get(module.name))
-          await registerScript(
-            `./module_${module.folder}.js`,
-            subModule.matches,
-            module.name + i++,
-          );
+          await registerScript(`./module_${module.folder}.js`, subModule.matches, id)
+            .catch(console.error);
       }
     }
   }
 };
 
-const registerScript = async (file: string, matches: string[], id: string) => {
-  if (!(await browser.permissions.contains({ permissions: ["userScripts"] })))
-    throw new Error("Autorisation userScripts indisponible.");
+// Chrome hides the userScripts API until "Allow user scripts" is enabled.
+const canUseUserScripts = async () => {
+  try {
+    if (!(await browser.permissions.contains({ permissions: ["userScripts"] }))) return false;
+    await browser.userScripts.getScripts();
+    return true;
+  } catch {
+    return false;
+  }
+};
 
-  const script = { id, js: [{ file }], matches };
-  const existing = await browser.userScripts.getScripts({ ids: [id] });
-  if (existing.length) await browser.userScripts.update([script]);
-  else await browser.userScripts.register([script]);
+// Content scripts need no extra toggle, so they back up userScripts.
+const contentScripts = () => (browser as any).scripting as
+  | {
+      getRegisteredContentScripts(filter?: { ids?: string[] }): Promise<{ id: string }[]>;
+      registerContentScripts(scripts: object[]): Promise<void>;
+      updateContentScripts(scripts: object[]): Promise<void>;
+      unregisterContentScripts(filter: { ids: string[] }): Promise<void>;
+    }
+  | undefined;
+
+const registerScript = async (file: string, matches: string[], id: string) => {
+  if (await canUseUserScripts()) {
+    const script = { id, js: [{ file }], matches };
+    const existing = await browser.userScripts.getScripts({ ids: [id] });
+    if (existing.length) await browser.userScripts.update([script]);
+    else await browser.userScripts.register([script]);
+    await unregisterContentScript(id);
+    return;
+  }
+
+  const scripting = contentScripts();
+  if (!scripting?.registerContentScripts) throw new Error("Aucune API d'injection disponible.");
+  const script = { id, js: [file.replace(/^\.\//, "")], matches, runAt: "document_idle", persistAcrossSessions: true };
+  const existing = await scripting.getRegisteredContentScripts({ ids: [id] });
+  if (existing.length) await scripting.updateContentScripts([script]);
+  else await scripting.registerContentScripts([script]);
+};
+
+const unregisterContentScript = async (id: string) => {
+  const scripting = contentScripts();
+  if (!scripting?.getRegisteredContentScripts) return;
+  const existing = await scripting.getRegisteredContentScripts({ ids: [id] });
+  if (existing.length) await scripting.unregisterContentScripts({ ids: [id] });
 };
 
 const unregisterScript = async (id: string) => {
-  const existing = await browser.userScripts.getScripts({ ids: [id] });
-  if (existing.length) await browser.userScripts.unregister({ ids: [id] });
+  if (await canUseUserScripts()) {
+    const existing = await browser.userScripts.getScripts({ ids: [id] });
+    if (existing.length) await browser.userScripts.unregister({ ids: [id] });
+  }
+  await unregisterContentScript(id);
 };
 
 const getModulesState = async () => {
@@ -248,7 +285,7 @@ export const init = async () => {
   browser.runtime.onMessage.addListener(runtimeMessageListener);
   (browser.runtime as any).onUserScriptMessage?.addListener(runtimeMessageListener);
 
-  if (userScriptsPermission) await enqueueModuleChange(initModules).catch(console.error);
+  await enqueueModuleChange(initModules).catch(console.error);
 };
 
 export default defineBackground(() => {

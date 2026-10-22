@@ -85,6 +85,7 @@ const modules: Module[] = [
     folder: "winwheel",
     name: "Winwheel",
     author: "Matiix310",
+    default: true,
     children: [
       {
         kind: "content",

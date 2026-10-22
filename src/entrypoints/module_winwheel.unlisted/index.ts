@@ -29,12 +29,12 @@ const gameDescriptions: Record<GameId, string> = {
   dice: "Roll first; your saved score unlocks after the toss.",
   scratch: "Rub away the ticket to uncover your percentage.",
   crash: "Watch the rocket multiply your score before it crashes.",
-  lotto: "Spin the drum and draw the golden jackpot score ball.",
+  lotto: "The blower churns 24 balls in a glass drum until the winning ball rides the tube.",
   derby: "5 thoroughbred horses race for the winning score.",
   cups: "Track the golden ball through lightning-fast shuffles.",
-  marbles: "4 high-speed marbles battle down the winding track.",
-  pachinko: "Arcade fever spheres bounce through pins into the jackpot pocket.",
-  pinball: "Catapult the chrome ball into neon bumpers and the jackpot saucer.",
+  marbles: "Four glass marbles race down a five-ramp wooden run to a photo-finish.",
+  pachinko: "Steel balls ride the rail through brass nails until one hits START and spins the reels.",
+  pinball: "Plunge the steel ball into pop bumpers; every hit adds points on the DMD.",
 };
 
 const games: GameDefinition[] = WINWHEEL_GAMES.map(({ id, label }) => ({
