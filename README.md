@@ -52,8 +52,8 @@ Intra tweaker is a Firefox extension made to improve the intranet of the EPITA s
 - **Ongoing Tenants**:
     - Change the visibility of tenants without any ongoing activity
 - **Winwheel**:
-    - Hide the percentage of the last successful tag behind a reveal button
-    - Reveal the saved percentage with one of six mini-games: prize wheel, Plinko, roulette, lucky slots, lucky dice, or scratch card
+    - Hide the percentage of every successful tag behind a "Lancer un mini-jeu" button (a validated green tag counts as 100%)
+    - Reveal the exact percentage with a random casino mini-game, chosen among the ones enabled in the popup
 - **Tag History**:
     - Add a new section named "Tag history" to the tenants page containing the last 12 tags
 - **Floating Failures**:
@@ -65,7 +65,37 @@ Intra tweaker is a Firefox extension made to improve the intranet of the EPITA s
 
 ## Installation
 
-You can download the extension in the xpi format from the [releases](https://github.com/matiix310/intra-tweaker/releases/) tab and Firefox with add the extension automatically for you. You can also build the app yourself by following the `Build locally` steps below.
+No build needed: download the ready-made package from the [latest release](https://github.com/Fuzois21/intra-tweaker/releases/latest).
+
+### Chrome, Brave, Edge, Opera, Arc
+
+1. Download [`intra-tweaker-chrome.zip`](https://github.com/Fuzois21/intra-tweaker/releases/latest/download/intra-tweaker-chrome.zip) and unzip it (keep the folder somewhere it won't be deleted).
+2. Open `chrome://extensions` (`edge://extensions`, `brave://extensions`, ...).
+3. Turn on **Developer mode** (top right).
+4. Click **Load unpacked** and select the unzipped folder (the one containing `manifest.json`).
+5. On the Intra Tweaker card, click **Details** and turn on **Allow user scripts** if it is there.
+6. Open [intra.forge.epita.fr](https://intra.forge.epita.fr) (refresh the tab if it was already open).
+
+To update: download the new zip, replace the folder content, then click the reload ↻ button on the extension card and refresh the intra.
+
+### Firefox
+
+1. Download [`intra-tweaker-firefox.zip`](https://github.com/Fuzois21/intra-tweaker/releases/latest/download/intra-tweaker-firefox.zip).
+2. Open `about:debugging#/runtime/this-firefox`.
+3. Click **Load Temporary Add-on…** and select the zip.
+4. In `about:addons` > Intra Tweaker > Permissions, tick everything.
+
+Firefox removes temporary add-ons when it closes: redo step 3 after a restart, or use the signed version from the [original releases](https://github.com/matiix310/intra-tweaker/releases/).
+
+### Publishing a new release (maintainers)
+
+Push a tag such as `v1.3.0` (or run the **Release** workflow by hand in the Actions tab): GitHub builds both zips and attaches them to the release.
+
+```sh
+  git tag v1.3.0 && git push origin v1.3.0
+```
+
+You can also build the app yourself by following the `Build locally` steps below.
 ## Build locally
 
 To build and run this project you need a node environment (I will use bun for the examples but fell free to use `npm`, `pnpm`, `yarn`, ...).

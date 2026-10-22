@@ -21,7 +21,7 @@ export function watchTagResults(mount: (tag: Tag, score: number) => (() => void)
   const observer = new MutationObserver(() => {
     if (!queued) { queued = true; queueMicrotask(scan); }
   });
-  observer.observe(document.documentElement, {childList:true,subtree:true,attributes:true,attributeFilter:['status','successpercent']});
+  observer.observe(document.documentElement, {childList:true,subtree:true,attributes:true,attributeFilter:['status','successpercent','validated']});
   scan();
   return () => { stopped=true;observer.disconnect();for(const entry of mounted.values())entry.dispose();mounted.clear(); };
 }

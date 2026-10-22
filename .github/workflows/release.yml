@@ -1,0 +1,42 @@
+name: Release
+
+# Push a tag like v1.3.0 (or run manually) to publish ready-to-install zips.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version (ex: 1.3.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      EXT_VERSION: ${{ inputs.version || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Use Bun
+        uses: oven-sh/setup-bun@v2
+      - name: Build and zip
+        run: |
+          export EXT_VERSION="${EXT_VERSION#v}"
+          bun install
+          bun run zip
+          bun run zip:firefox --mv3
+          # Stable names so the README can link to releases/latest/download/...
+          cp .output/*-chrome.zip intra-tweaker-chrome.zip
+          cp .output/*-firefox.zip intra-tweaker-firefox.zip
+          echo "TAG=v$EXT_VERSION" >> "$GITHUB_ENV"
+      - name: Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Intra Tweaker ${{ env.TAG }}
+          files: |
+            intra-tweaker-chrome.zip
+            intra-tweaker-firefox.zip

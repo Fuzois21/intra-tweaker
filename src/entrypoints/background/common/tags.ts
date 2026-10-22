@@ -76,7 +76,10 @@ export const tagFromElement = (element: HTMLAnchorElement): Tag | undefined => {
     };
   } else {
     const rawPercentage = traceSymbol.getAttribute("successpercent");
-    const percentage = rawPercentage?.trim() ? Number(rawPercentage) : undefined;
+    // A validated trace may only show the green check, without any percentage.
+    const validated = traceSymbol.getAttribute("validated") === "true";
+    const parsed = rawPercentage?.trim() ? Number(rawPercentage) : undefined;
+    const percentage = validated && !Number.isFinite(parsed) ? 100 : parsed;
 
     return {
       name,
